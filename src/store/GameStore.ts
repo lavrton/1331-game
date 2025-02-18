@@ -534,10 +534,73 @@ export class GameStore {
   }
 
   private loadGame() {
-    const savedState = localStorage.getItem('gameState');
-    if (savedState) {
+    try {
+      const savedState = localStorage.getItem('gameState');
+      if (!savedState) return;
+
       const state = JSON.parse(savedState);
+
+      // Validate required properties and their types
+      const requiredProperties = {
+        players: Array.isArray,
+        transactions: Array.isArray,
+        turnNumber: (n: any) => typeof n === 'number' && n > 0,
+        turnPhase: (p: any) =>
+          ['start', 'actions', 'auction', 'finished'].includes(p),
+        gameStarted: (b: any) => typeof b === 'boolean',
+        currentPlayerIndex: (n: any) => typeof n === 'number' && n >= 0,
+        lotteryParticipants: Array.isArray,
+        config: (c: any) => typeof c === 'object' && c !== null,
+      };
+
+      // Check if all required properties exist and have correct types
+      const isValid = Object.entries(requiredProperties).every(
+        ([key, validator]) => {
+          if (!(key in state)) {
+            console.warn(`Missing required property: ${key}`);
+            return false;
+          }
+          if (!validator(state[key])) {
+            console.warn(`Invalid type for property: ${key}`);
+            return false;
+          }
+          return true;
+        }
+      );
+
+      // Additional validation for nested structures
+      const hasValidPlayers = state.players.every(
+        (player: any) =>
+          typeof player.id === 'string' &&
+          typeof player.name === 'string' &&
+          typeof player.isActive === 'boolean' &&
+          typeof player.isBot === 'boolean'
+      );
+
+      const hasValidConfig =
+        state.config &&
+        typeof state.config.initialMoneyPerPlayer === 'number' &&
+        typeof state.config.bankContributionPerPlayer === 'number' &&
+        typeof state.config.costToRaiseLevel === 'number' &&
+        typeof state.config.refundToLowerLevel === 'number' &&
+        typeof state.config.lotteryBaseCost === 'number' &&
+        typeof state.config.lotteryBaseReward === 'number' &&
+        typeof state.config.auctionBaseIncrement === 'number' &&
+        typeof state.config.penaltyIncrement === 'number';
+
+      if (!isValid || !hasValidPlayers || !hasValidConfig) {
+        console.warn('Invalid saved state detected, resetting game');
+        this.resetGame();
+        localStorage.removeItem('gameState');
+        return;
+      }
+
+      // If all validations pass, load the state
       Object.assign(this, state);
+    } catch (error) {
+      console.error('Error loading game state:', error);
+      this.resetGame();
+      localStorage.removeItem('gameState');
     }
   }
 
